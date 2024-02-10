@@ -3,75 +3,93 @@ let myMap = L.map("map", {
     center: [40.72, -113.67],
     zoom: 5
   });
-  
-  // Adding a tile layer (the background map image) to the map:
+
   
 let TileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   }).addTo(myMap);
   
 
-let queryURL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson"
+const queryURL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson";
+const COLOUR_DEPTHS = [0,3,6,9,12,15];
+const RADIUS_MIN = 5;
+const RADIUS_COEFF = 3;
 
 
+function colourScale(depth) {
+  if (depth <= COLOUR_DEPTHS[0]) {
+    return 	"#ffc100";
+  } else if (depth <= COLOUR_DEPTHS[1]) {
+    return "#ff9a00";
+  } else if (depth <= COLOUR_DEPTHS[2]) {
+    return "#ff7400";
+  } else if (depth <= COLOUR_DEPTHS[3]) {
+    return "#ff4d00";
+  } else if (depth <= COLOUR_DEPTHS[4]) {
+    return "#ff0000";
+  } else if (depth <= COLOUR_DEPTHS[5]) {
+    return "#8B0000";
+  } else {
+    return "#6D071A";
+  }
+};
 
-d3.json(queryURL).then(function(data) {
 
-  function styling() {
-    return {
-      fillOpacity:1,
-      weight:1,
-    };
+function markerRadius(magnitude) {
+  let calcRadius = magnitude*RADIUS_COEFF;
+  return Math.max(calcRadius, RADIUS_MIN);
+}
 
 
-  function colourScale(depth) {
-    switch(true){
-      case depth >100:
-        return "#44ce1b";
-      case depth >80:
-        return "#bbdb44";
-      case depth >60:
-        return "#f7e379";
-      case depth >40:
-        return "#f2a134";
-      default:
-        return "#000000";
+function pointToLayer(feature, latlng) {
+  let colour = colourScale(feature.geometry.coordinates[2])
+  let circleOptions = {
+    radius: markerRadius(feature.properties.mag),
+    color: colour,
+    fillColor: colour,
+    fillOpacity: 0.5
+  };
+  return L.circleMarker(latlng, circleOptions);
+}
 
+
+function onEachFeature(feature, layer) {
+  layer.bindPopup(`<h3>${feature.properties.place}</h3><hr><p>${new Date(feature.properties.time)}</p><p>Earthquake magnitude: ${feature.properties.mag} depth: ${feature.geometry.coordinates[2]}</p>`);
+}
+
+
+function createFeatures(earthquakeData) {
+
+  let geoJSONoptions = {
+    "onEachFeature": onEachFeature,
+    "pointToLayer": pointToLayer
+  }
+  let earthquakes = L.geoJSON(earthquakeData, geoJSONoptions);
+
+  earthquakes.addTo(myMap);
+}
+
+d3.json(queryURL).then(createFeatures); 
+
+
+function createLegend() {
+
+  let legend = L.control({ position: "bottomright" });
+  legend.onAdd = function() {
+    let div = L.DomUtil.create("div", "info legend");
+    let limits = COLOUR_DEPTHS;
+    let colors = COLOUR_DEPTHS.forEach(depth => colourScale);
+    let labels = [];
+
+    for (i = 0; i<limits.length -1; ++i){
+      div.innerHTML += "<ul>" + labels.join("") + "</ul>";
     }
+    div.innerHTML += `&gt;${limits[limits.length-1]} <i style="background-color: ${colour[limits.length-1]}>&emsp;`;
+    return div;
+  };
 
-  function markerRadius(magnitude) {
-    if (magnitude == 0) {
-      return 1;
-    }
-    return magnitude*2;
+  legend.addTo(myMap);
 
-    }
+};
 
-
-onEachFeature: function(feature, layer) {
-      layer.bindPopup("magnitude: " + features.properties.mag + "depth:"+ features.geometry.coordinates[2]);
-    }
-  }).addTo(myMap);
-
-  let features = data.features;
-
-  console.log(features);
-
-    let markers = [];
-
-    for (let i = 0; i < features.length; i++) {
-
-        let location = features.geometry;
-        if (location) {
-            markers.push([location.coordinates[1], location.coordinates[0]]);
-        }
-    }
-
-    let markerEarthquake = L.markerCluster(markers).bindPopup("<h1>" + features.geometry.coordinates + "</h1>").addTo(myMap);
-
-});
-
-
-
-
-// myMap.addLayer(markers);
+createLegend();
